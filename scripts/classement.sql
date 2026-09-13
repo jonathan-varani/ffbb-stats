@@ -40,6 +40,8 @@ returns table (
 )
 language sql
 stable
+security definer
+set search_path = public
 as $$
   select
     j.id, j.nom, j.prenom,
