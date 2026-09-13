@@ -1,0 +1,31 @@
+name: Ingest ZIP e-Marque
+
+on:
+  repository_dispatch:
+    types: [new_zip]
+  workflow_dispatch:
+    inputs:
+      path:
+        description: "Chemin du ZIP dans le bucket Supabase (ex. 2020/2020-03-07_...zip)"
+        required: true
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances
+        run: pip install supabase pdfplumber
+
+      - name: Ingérer le ZIP
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        working-directory: scripts
+        run: |
+          python ingest.py --storage-path "${{ github.event.client_payload.path || github.event.inputs.path }}"
