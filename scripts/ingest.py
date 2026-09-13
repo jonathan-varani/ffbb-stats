@@ -17,6 +17,7 @@ import sys
 import zipfile
 import argparse
 import tempfile
+from datetime import datetime, timezone
 
 from supabase import create_client
 from parse_recap import parse_recap_pdf
@@ -45,7 +46,7 @@ def extract_recap_pdf(zip_path, dest_dir):
             if re.match(r'^R[ée]capitulatif_', os.path.basename(n), re.IGNORECASE)
         ]
         if not candidates:
-            sys.exit(f"Erreur : aucun PDF 'Recapitulatif_*' trouvé dans {zip_path}")
+            raise ValueError(f"aucun PDF 'Recapitulatif_*' trouvé dans {zip_path}")
         member = candidates[0]
         out_path = os.path.join(dest_dir, os.path.basename(member))
         with zf.open(member) as src, open(out_path, 'wb') as dst:
@@ -60,6 +61,47 @@ def download_from_storage(sb, storage_path, dest_dir):
     with open(out_path, 'wb') as f:
         f.write(data)
     return out_path
+
+
+# ─────────────────────────────────────────────
+# Classement du ZIP après traitement (archives/ ou quarantaine/)
+# ─────────────────────────────────────────────
+
+def _move_object(sb, bucket, from_path, to_path):
+    """Déplace un objet dans le bucket. Best-effort : ne lève pas si la
+    destination existe déjà (retente avec un suffixe) ou si le déplacement
+    échoue, pour ne jamais masquer le résultat réel de l'ingestion."""
+    try:
+        sb.storage.from_(bucket).move(from_path, to_path)
+        return to_path
+    except Exception as e:
+        alt = f"{to_path}.{int(datetime.now(timezone.utc).timestamp())}"
+        try:
+            sb.storage.from_(bucket).move(from_path, alt)
+            return alt
+        except Exception as e2:
+            print(f"⚠ Impossible de déplacer {from_path} : {e2}")
+            return None
+
+
+def archive_zip(sb, storage_path):
+    bucket = os.environ.get('SUPABASE_BUCKET', 'ffbb-archive')
+    filename = os.path.basename(storage_path)
+    date_integration = datetime.now(timezone.utc).date().isoformat()
+    dest = f"archives/{date_integration}/{filename}"
+    moved = _move_object(sb, bucket, storage_path, dest)
+    if moved:
+        print(f"Archivé : {moved}")
+
+
+def quarantine_zip(sb, storage_path, reason):
+    bucket = os.environ.get('SUPABASE_BUCKET', 'ffbb-archive')
+    filename = os.path.basename(storage_path)
+    dest = f"quarantaine/{filename}"
+    moved = _move_object(sb, bucket, storage_path, dest)
+    print(f"KO : {reason}")
+    if moved:
+        print(f"Mis en quarantaine : {moved}")
 
 
 # ─────────────────────────────────────────────
@@ -126,22 +168,29 @@ def ingest(zip_path=None, archive_path=None, storage_path=None):
     sb = get_client()
     erreurs = []
 
-    with tempfile.TemporaryDirectory() as tmp:
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            if storage_path:
+                zip_path = download_from_storage(sb, storage_path, tmp)
+                archive_path = archive_path or storage_path
+            pdf_path = extract_recap_pdf(zip_path, tmp)
+            data = parse_recap_pdf(pdf_path)
+
+        match, joueurs = data['match'], data['joueurs']
+
+        equipe_dom_id = upsert_equipe(sb, match['equipe_domicile'])
+        equipe_vis_id = upsert_equipe(sb, match['equipe_visiteur'])
+
+        match_id = upsert_match(
+            sb, match, equipe_dom_id, equipe_vis_id,
+            archive_path or os.path.basename(zip_path)
+        )
+    except Exception as e:
+        # Échec avant même d'avoir un match exploitable : ZIP illisible,
+        # PDF absent/corrompu, format inattendu... → quarantaine.
         if storage_path:
-            zip_path = download_from_storage(sb, storage_path, tmp)
-            archive_path = archive_path or storage_path
-        pdf_path = extract_recap_pdf(zip_path, tmp)
-        data = parse_recap_pdf(pdf_path)
-
-    match, joueurs = data['match'], data['joueurs']
-
-    equipe_dom_id = upsert_equipe(sb, match['equipe_domicile'])
-    equipe_vis_id = upsert_equipe(sb, match['equipe_visiteur'])
-
-    match_id = upsert_match(
-        sb, match, equipe_dom_id, equipe_vis_id,
-        archive_path or os.path.basename(zip_path)
-    )
+            quarantine_zip(sb, storage_path, str(e))
+        raise
 
     equipe_id_by_nom = {
         match['equipe_domicile']: equipe_dom_id,
@@ -167,6 +216,10 @@ def ingest(zip_path=None, archive_path=None, storage_path=None):
         print(f"Erreurs ({len(erreurs)}) :")
         for e in erreurs:
             print(f"  - {e}")
+
+    # Le match a été intégré (même avec des erreurs joueur ponctuelles) : archivé.
+    if storage_path:
+        archive_zip(sb, storage_path)
 
     return {'match_id': match_id, 'joueurs_ok': nb_ok, 'joueurs_total': len(joueurs), 'erreurs': erreurs}
 

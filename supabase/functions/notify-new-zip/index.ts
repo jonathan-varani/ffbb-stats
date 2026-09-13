@@ -17,6 +17,12 @@ Deno.serve(async (req: Request) => {
   if (record.bucket_id !== 'ffbb-archive' || !/\.zip$/i.test(record.name || '')) {
     return new Response('ignored (not a zip in ffbb-archive)', { status: 200 });
   }
+  // Un ZIP déjà classé par ingest.py (archives/<date>/... ou quarantaine/...)
+  // ne doit jamais redéclencher une ingestion, même si un déplacement finissait
+  // par apparaître comme un INSERT plutôt qu'un UPDATE côté storage.objects.
+  if (/^(archives|quarantaine)\//i.test(record.name || '')) {
+    return new Response('ignored (already processed path)', { status: 200 });
+  }
 
   const githubToken = Deno.env.get('GITHUB_TOKEN');
   const githubRepo = Deno.env.get('GITHUB_REPO');
