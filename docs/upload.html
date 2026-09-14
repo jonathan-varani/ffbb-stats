@@ -57,27 +57,9 @@
 <header>
   <h1>FFBB Stats <span class="badge">— archive e-Marque</span></h1>
   <nav style="margin-left:auto"><a href="index.html" style="color:var(--muted);text-decoration:none;font-size:13px;margin-right:14px">Classement</a></nav>
-  <button id="btnCfg">⚙️ Configuration</button>
 </header>
 
 <main>
-  <section id="cfg" class="hidden">
-    <h2>Configuration Supabase</h2>
-    <label for="url">URL du projet</label>
-    <input id="url" type="text" placeholder="https://xxxx.supabase.co" spellcheck="false">
-    <label for="key">Clé anon (public)</label>
-    <input id="key" type="password" placeholder="eyJhbGci..." spellcheck="false">
-    <label for="bucket">Bucket</label>
-    <input id="bucket" type="text" placeholder="ffbb-archive" spellcheck="false">
-    <div class="row">
-      <button class="primary" id="save">Sauvegarder</button>
-      <button id="test">Tester la connexion</button>
-      <button id="clear">Effacer</button>
-    </div>
-    <div id="cfgMsg" class="msg"></div>
-    <p class="hint">Valeurs par défaut intégrées à la page — aucune configuration n'est requise. Une sauvegarde ici ne fait que surcharger localement (dans ce navigateur) ; la clé anon est publique par nature, ce sont les policies RLS du bucket qui contrôlent ce qui est permis.</p>
-  </section>
-
   <section>
     <h2>Déposer des fichiers e-Marque</h2>
     <div id="drop">
@@ -104,23 +86,15 @@
 </main>
 
 <script>
-const LS = 'ffbb-stats-config';
 const $ = id => document.getElementById(id);
-// Config par défaut (clé anon publique par conception, protégée par les policies
-// RLS du bucket) — le panneau ⚙️ permet de la surcharger localement si besoin,
-// mais aucune configuration n'est requise pour un usage normal.
-const DEFAULT_CFG = {
+// Config fixe (clé anon publique par conception, protégée par les policies
+// RLS du bucket) — non modifiable depuis la page pour que les personnes qui
+// déposent des ZIP (y compris externes) ne puissent pas l'altérer.
+const cfg = {
   url: 'https://xbaoyelmtzpxwqdxkync.supabase.co',
   key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhiYW95ZWxtdHpweHdxZHhreW5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzMjY2NjIsImV4cCI6MjEwNDkwMjY2Mn0.6iy15Pz9lfwOJiYE2kDk8Gimi4bXTrEstcgLmHeWmiI',
   bucket: 'ffbb-archive'
 };
-let cfg = Object.assign({}, DEFAULT_CFG);
-
-function loadCfg(){
-  try { cfg = Object.assign(cfg, JSON.parse(localStorage.getItem(LS) || '{}')); } catch(e){}
-  $('url').value = cfg.url; $('key').value = cfg.key; $('bucket').value = cfg.bucket;
-}
-function configured(){ return !!(cfg.url && cfg.key && cfg.bucket); }
 function base(){ return cfg.url.replace(/\/+$/,'') + '/storage/v1'; }
 function headers(extra){
   return Object.assign({apikey: cfg.key, Authorization: 'Bearer ' + cfg.key}, extra || {});
@@ -137,40 +111,6 @@ function fmtDate(s){
   const d = new Date(s);
   return isNaN(d) ? '—' : d.toLocaleString('fr-FR', {dateStyle:'short', timeStyle:'short'});
 }
-
-$('btnCfg').onclick = () => $('cfg').classList.toggle('hidden');
-
-$('save').onclick = () => {
-  cfg = {
-    url: $('url').value.trim(),
-    key: $('key').value.trim(),
-    bucket: $('bucket').value.trim() || 'ffbb-archive'
-  };
-  localStorage.setItem(LS, JSON.stringify(cfg));
-  say('cfgMsg', 'Configuration enregistrée.', 'ok');
-  list();
-};
-
-$('clear').onclick = () => {
-  localStorage.removeItem(LS);
-  cfg = {url:'', key:'', bucket:'ffbb-archive'};
-  loadCfg();
-  say('cfgMsg', 'Configuration effacée.');
-};
-
-$('test').onclick = async () => {
-  if(!configured()){ say('cfgMsg', 'Renseigne les trois champs d’abord.', 'err'); return; }
-  say('cfgMsg', 'Test en cours…');
-  try {
-    const r = await fetch(base() + '/object/list/' + encodeURIComponent(cfg.bucket), {
-      method: 'POST',
-      headers: headers({'Content-Type':'application/json'}),
-      body: JSON.stringify({prefix:'', limit:1})
-    });
-    if(r.ok) say('cfgMsg', 'Connexion OK — bucket accessible en lecture.', 'ok');
-    else say('cfgMsg', 'Échec (' + r.status + ') : ' + (await r.text()).slice(0,200), 'err');
-  } catch(e){ say('cfgMsg', 'Erreur réseau : ' + e.message, 'err'); }
-};
 
 // --- Upload ---
 const drop = $('drop');
@@ -192,11 +132,6 @@ function logLine(text){
 }
 
 async function upload(files){
-  if(!configured()){
-    $('cfg').classList.remove('hidden');
-    say('cfgMsg', 'Configure Supabase avant d’uploader.', 'err');
-    return;
-  }
   const zips = files.filter(f => /\.zip$/i.test(f.name));
   files.filter(f => !/\.zip$/i.test(f.name))
        .forEach(f => logLine('⚠ ' + f.name + ' ignoré (pas un .zip)'));
@@ -222,7 +157,6 @@ async function upload(files){
 $('refresh').onclick = list;
 
 async function list(){
-  if(!configured()){ say('listMsg', 'Configuration Supabase requise.'); return; }
   say('listMsg', 'Chargement…');
   try {
     const r = await fetch(base() + '/object/list/' + encodeURIComponent(cfg.bucket), {
@@ -251,7 +185,6 @@ async function list(){
   }
 }
 
-loadCfg();
 list();
 </script>
 </body>
