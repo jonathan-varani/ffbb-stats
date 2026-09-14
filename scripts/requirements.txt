@@ -1,2 +1,5 @@
 supabase
 pdfplumber
+pymupdf
+pillow
+anthropic

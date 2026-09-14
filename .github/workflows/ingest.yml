@@ -20,12 +20,13 @@ jobs:
           python-version: "3.12"
 
       - name: Installer les dépendances
-        run: pip install supabase pdfplumber
+        run: pip install -r scripts/requirements.txt
 
       - name: Ingérer le ZIP
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         working-directory: scripts
         run: |
           python ingest.py --storage-path "${{ github.event.client_payload.path || github.event.inputs.path }}"

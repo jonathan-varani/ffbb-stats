@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 
 from supabase import create_client
 from parse_recap import parse_recap_pdf
+from parse_resume import parse_resume_pdf
 
 
 # ─────────────────────────────────────────────
@@ -39,19 +40,27 @@ def get_client():
 # Extraction du PDF Récapitulatif depuis le ZIP
 # ─────────────────────────────────────────────
 
-def extract_recap_pdf(zip_path, dest_dir):
+def extract_stats_pdf(zip_path, dest_dir):
+    """Cherche le PDF exploitable dans le ZIP e-Marque.
+
+    Ancien format régional : 'Recapitulatif_*.pdf' (texte natif, parse_recap.py).
+    Nouveau format Fédérale : 'resume_*.pdf' (vectoriel, parse_resume.py).
+    Renvoie (chemin_local, format) avec format in {'recap', 'resume'}.
+    """
     with zipfile.ZipFile(zip_path) as zf:
-        candidates = [
-            n for n in zf.namelist()
-            if re.match(r'^R[ée]capitulatif_', os.path.basename(n), re.IGNORECASE)
-        ]
-        if not candidates:
-            raise ValueError(f"aucun PDF 'Recapitulatif_*' trouvé dans {zip_path}")
-        member = candidates[0]
+        names = zf.namelist()
+        recap = [n for n in names if re.match(r'^R[ée]capitulatif_', os.path.basename(n), re.IGNORECASE)]
+        resume = [n for n in names if re.match(r'^resume_', os.path.basename(n), re.IGNORECASE)]
+
+        member, fmt = (recap[0], 'recap') if recap else (resume[0], 'resume') if resume else (None, None)
+        if not member:
+            raise ValueError(
+                f"aucun PDF 'Recapitulatif_*' ni 'resume_*' trouvé dans {zip_path}"
+            )
         out_path = os.path.join(dest_dir, os.path.basename(member))
         with zf.open(member) as src, open(out_path, 'wb') as dst:
             dst.write(src.read())
-        return out_path
+        return out_path, fmt
 
 
 def download_from_storage(sb, storage_path, dest_dir):
@@ -127,9 +136,16 @@ def upsert_match(sb, match, equipe_dom_id, equipe_vis_id, archive_path):
         'arbitre2': match['arbitre2'],
         'archive_path': archive_path,
     }
-    r = sb.table('matchs').upsert(
-        payload, on_conflict='date,equipe_domicile_id,equipe_visiteur_id'
-    ).execute()
+    num_rencontre = match.get('num_rencontre')
+    if num_rencontre:
+        # Format Fédérale : le num_rencontre est la clé d'idempotence fiable
+        # (le nom du ZIP ne contient plus de date).
+        payload['num_rencontre'] = num_rencontre
+        payload['extraction_validee'] = match.get('extraction_validee', True)
+        on_conflict = 'num_rencontre'
+    else:
+        on_conflict = 'date,equipe_domicile_id,equipe_visiteur_id'
+    r = sb.table('matchs').upsert(payload, on_conflict=on_conflict).execute()
     return r.data[0]['id']
 
 
@@ -157,6 +173,10 @@ def upsert_stats(sb, match_id, joueur_id, equipe_id, j):
         'fautes_personnelles': j['fautes_personnelles'],
         # points_total est une colonne GENERATED côté DB : ne pas l'envoyer.
     }
+    if 'titulaire' in j:
+        payload['titulaire'] = j['titulaire']
+    if j.get('tps_jeu') is not None:
+        payload['tps_jeu'] = j['tps_jeu']
     sb.table('stats_joueurs').upsert(payload, on_conflict='match_id,joueur_id').execute()
 
 
@@ -173,8 +193,15 @@ def ingest(zip_path=None, archive_path=None, storage_path=None):
             if storage_path:
                 zip_path = download_from_storage(sb, storage_path, tmp)
                 archive_path = archive_path or storage_path
-            pdf_path = extract_recap_pdf(zip_path, tmp)
-            data = parse_recap_pdf(pdf_path)
+            pdf_path, fmt = extract_stats_pdf(zip_path, tmp)
+            if fmt == 'recap':
+                data = parse_recap_pdf(pdf_path)
+            else:
+                data = parse_resume_pdf(pdf_path)
+                validation = data.get('validation', {})
+                if not validation.get('ok', True):
+                    print(f"⚠ Extraction non validée par les checksums : {validation.get('erreurs')}")
+                data['match']['extraction_validee'] = validation.get('ok', True)
 
         match, joueurs = data['match'], data['joueurs']
 
