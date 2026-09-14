@@ -202,11 +202,11 @@ async function upload(files){
        .forEach(f => logLine('⚠ ' + f.name + ' ignoré (pas un .zip)'));
   for(const f of zips){
     const li = logLine('⏳ ' + f.name + ' …');
-    const name = new Date().toISOString().slice(0,10) + '_' + f.name.replace(/[^\w.\-]/g, '_');
+    const name = new Date().toISOString().replace(/[:.]/g, '-').slice(0,19) + '_' + f.name.replace(/[^\w.\-]/g, '_');
     try {
       const r = await fetch(base() + '/object/' + encodeURIComponent(cfg.bucket) + '/' + encodeURIComponent(name), {
         method: 'POST',
-        headers: headers({'Content-Type':'application/zip', 'x-upsert':'true'}),
+        headers: headers({'Content-Type':'application/zip'}),
         body: f
       });
       if(r.ok) li.textContent = '✅ ' + name + ' (' + fmtSize(f.size) + ')';
