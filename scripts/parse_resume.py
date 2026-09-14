@@ -29,10 +29,10 @@ from anthropic import Anthropic
 # Configuration
 # ─────────────────────────────────────────────
 
-MODEL = os.environ.get("FFBB_MODEL", "claude-sonnet-4-5")
-# Alternative économique : claude-haiku-4-5 (~3x moins cher)
+MODEL = os.environ.get("FFBB_MODEL", "claude-haiku-4-5")
+# Alternative plus précise si les checksums échouent souvent : claude-sonnet-4-5 (~3x plus cher)
 
-DPI = 200
+DPI = 150
 
 # Le template FFBB est fixe (12 lignes joueurs par équipe),
 # donc ces bandes de découpe sont stables d'un match à l'autre.
