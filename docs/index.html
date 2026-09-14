@@ -75,7 +75,7 @@
       <button id="clear">Effacer</button>
     </div>
     <div id="cfgMsg" class="msg"></div>
-    <p class="hint">Stocké uniquement dans le localStorage de ce navigateur. La clé anon est publique par nature ; ce sont les policies RLS du bucket qui contrôlent ce qui est permis.</p>
+    <p class="hint">Valeurs par défaut intégrées à la page — aucune configuration n'est requise. Une sauvegarde ici ne fait que surcharger localement (dans ce navigateur) ; la clé anon est publique par nature, ce sont les policies RLS du bucket qui contrôlent ce qui est permis.</p>
   </section>
 
   <section>
@@ -106,7 +106,15 @@
 <script>
 const LS = 'ffbb-stats-config';
 const $ = id => document.getElementById(id);
-let cfg = {url:'', key:'', bucket:'ffbb-archive'};
+// Config par défaut (clé anon publique par conception, protégée par les policies
+// RLS du bucket) — le panneau ⚙️ permet de la surcharger localement si besoin,
+// mais aucune configuration n'est requise pour un usage normal.
+const DEFAULT_CFG = {
+  url: 'https://xbaoyelmtzpxwqdxkync.supabase.co',
+  key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhiYW95ZWxtdHpweHdxZHhreW5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzMjY2NjIsImV4cCI6MjEwNDkwMjY2Mn0.6iy15Pz9lfwOJiYE2kDk8Gimi4bXTrEstcgLmHeWmiI',
+  bucket: 'ffbb-archive'
+};
+let cfg = Object.assign({}, DEFAULT_CFG);
 
 function loadCfg(){
   try { cfg = Object.assign(cfg, JSON.parse(localStorage.getItem(LS) || '{}')); } catch(e){}
@@ -244,8 +252,7 @@ async function list(){
 }
 
 loadCfg();
-if(!configured()) $('cfg').classList.remove('hidden');
-else list();
+list();
 </script>
 </body>
 </html>
