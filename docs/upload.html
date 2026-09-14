@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FFBB Stats — Archive e-Marque</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏀</text></svg>">
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#16181d; --muted:#666e7a;
+    --line:#e2e5ea; --accent:#d4552b; --accent-ink:#fff;
+    --ok:#1a7f47; --err:#b3261e; --shadow:0 1px 3px rgba(0,0,0,.08);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#15171b; --panel:#1d2025; --ink:#e9eaec; --muted:#9aa1ab;
+      --line:#2c3037; --accent:#e4693f; --shadow:0 1px 3px rgba(0,0,0,.4);
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  header{display:flex;align-items:center;gap:12px;padding:18px 20px;
+    border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{font-size:17px;margin:0;font-weight:600;flex:1}
+  header .badge{font-size:12px;color:var(--muted);font-weight:400}
+  button{font:inherit;cursor:pointer;border-radius:7px;border:1px solid var(--line);
+    background:var(--panel);color:var(--ink);padding:7px 12px}
+  button.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  main{max-width:860px;margin:0 auto;padding:20px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:18px;margin-bottom:18px;box-shadow:var(--shadow)}
+  h2{font-size:14px;margin:0 0 14px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
+  input[type=text],input[type=password]{width:100%;padding:8px 10px;border-radius:7px;
+    border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit}
+  #drop{border:2px dashed var(--line);border-radius:10px;padding:34px 16px;text-align:center;
+    color:var(--muted);cursor:pointer;transition:.15s}
+  #drop.over{border-color:var(--accent);color:var(--ink)}
+  #drop strong{color:var(--ink)}
+  .tblwrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+  th{font-size:12px;color:var(--muted);font-weight:600}
+  td.num{text-align:right;color:var(--muted);white-space:nowrap}
+  .msg{margin-top:12px;font-size:14px}
+  .msg.ok{color:var(--ok)} .msg.err{color:var(--err)}
+  .row{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}
+  .hidden{display:none}
+  .hint{font-size:12px;color:var(--muted);margin-top:10px}
+  ul.log{list-style:none;margin:14px 0 0;padding:0;font-size:13px}
+  ul.log li{padding:5px 0;border-top:1px solid var(--line);word-break:break-all}
+</style>
+</head>
+<body>
+<header>
+  <h1>FFBB Stats <span class="badge">— archive e-Marque</span></h1>
+  <nav style="margin-left:auto"><a href="index.html" style="color:var(--muted);text-decoration:none;font-size:13px;margin-right:14px">Classement</a></nav>
+  <button id="btnCfg">⚙️ Configuration</button>
+</header>
+
+<main>
+  <section id="cfg" class="hidden">
+    <h2>Configuration Supabase</h2>
+    <label for="url">URL du projet</label>
+    <input id="url" type="text" placeholder="https://xxxx.supabase.co" spellcheck="false">
+    <label for="key">Clé anon (public)</label>
+    <input id="key" type="password" placeholder="eyJhbGci..." spellcheck="false">
+    <label for="bucket">Bucket</label>
+    <input id="bucket" type="text" placeholder="ffbb-archive" spellcheck="false">
+    <div class="row">
+      <button class="primary" id="save">Sauvegarder</button>
+      <button id="test">Tester la connexion</button>
+      <button id="clear">Effacer</button>
+    </div>
+    <div id="cfgMsg" class="msg"></div>
+    <p class="hint">Valeurs par défaut intégrées à la page — aucune configuration n'est requise. Une sauvegarde ici ne fait que surcharger localement (dans ce navigateur) ; la clé anon est publique par nature, ce sont les policies RLS du bucket qui contrôlent ce qui est permis.</p>
+  </section>
+
+  <section>
+    <h2>Déposer des fichiers e-Marque</h2>
+    <div id="drop">
+      <strong>Glisse un ou plusieurs .zip ici</strong><br>ou clique pour choisir
+    </div>
+    <input id="file" type="file" accept=".zip,application/zip" multiple class="hidden">
+    <ul class="log" id="log"></ul>
+  </section>
+
+  <section>
+    <h2>Archive</h2>
+    <div class="row" style="margin-top:0">
+      <button id="refresh">Rafraîchir</button>
+      <span id="count" class="hint" style="margin:0"></span>
+    </div>
+    <div class="tblwrap">
+      <table id="tbl" class="hidden">
+        <thead><tr><th>Fichier</th><th class="num">Taille</th><th class="num">Déposé le</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="listMsg" class="msg"></div>
+  </section>
+</main>
+
+<script>
+const LS = 'ffbb-stats-config';
+const $ = id => document.getElementById(id);
+// Config par défaut (clé anon publique par conception, protégée par les policies
+// RLS du bucket) — le panneau ⚙️ permet de la surcharger localement si besoin,
+// mais aucune configuration n'est requise pour un usage normal.
+const DEFAULT_CFG = {
+  url: 'https://xbaoyelmtzpxwqdxkync.supabase.co',
+  key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhiYW95ZWxtdHpweHdxZHhreW5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzMjY2NjIsImV4cCI6MjEwNDkwMjY2Mn0.6iy15Pz9lfwOJiYE2kDk8Gimi4bXTrEstcgLmHeWmiI',
+  bucket: 'ffbb-archive'
+};
+let cfg = Object.assign({}, DEFAULT_CFG);
+
+function loadCfg(){
+  try { cfg = Object.assign(cfg, JSON.parse(localStorage.getItem(LS) || '{}')); } catch(e){}
+  $('url').value = cfg.url; $('key').value = cfg.key; $('bucket').value = cfg.bucket;
+}
+function configured(){ return !!(cfg.url && cfg.key && cfg.bucket); }
+function base(){ return cfg.url.replace(/\/+$/,'') + '/storage/v1'; }
+function headers(extra){
+  return Object.assign({apikey: cfg.key, Authorization: 'Bearer ' + cfg.key}, extra || {});
+}
+function say(el, text, cls){ const n = $(el); n.textContent = text; n.className = 'msg' + (cls ? ' ' + cls : ''); }
+function fmtSize(b){
+  if(b == null) return '—';
+  const u = ['o','Ko','Mo','Go']; let i = 0, n = b;
+  while(n >= 1024 && i < u.length - 1){ n /= 1024; i++; }
+  return (i ? n.toFixed(1) : n) + ' ' + u[i];
+}
+function fmtDate(s){
+  if(!s) return '—';
+  const d = new Date(s);
+  return isNaN(d) ? '—' : d.toLocaleString('fr-FR', {dateStyle:'short', timeStyle:'short'});
+}
+
+$('btnCfg').onclick = () => $('cfg').classList.toggle('hidden');
+
+$('save').onclick = () => {
+  cfg = {
+    url: $('url').value.trim(),
+    key: $('key').value.trim(),
+    bucket: $('bucket').value.trim() || 'ffbb-archive'
+  };
+  localStorage.setItem(LS, JSON.stringify(cfg));
+  say('cfgMsg', 'Configuration enregistrée.', 'ok');
+  list();
+};
+
+$('clear').onclick = () => {
+  localStorage.removeItem(LS);
+  cfg = {url:'', key:'', bucket:'ffbb-archive'};
+  loadCfg();
+  say('cfgMsg', 'Configuration effacée.');
+};
+
+$('test').onclick = async () => {
+  if(!configured()){ say('cfgMsg', 'Renseigne les trois champs d’abord.', 'err'); return; }
+  say('cfgMsg', 'Test en cours…');
+  try {
+    const r = await fetch(base() + '/object/list/' + encodeURIComponent(cfg.bucket), {
+      method: 'POST',
+      headers: headers({'Content-Type':'application/json'}),
+      body: JSON.stringify({prefix:'', limit:1})
+    });
+    if(r.ok) say('cfgMsg', 'Connexion OK — bucket accessible en lecture.', 'ok');
+    else say('cfgMsg', 'Échec (' + r.status + ') : ' + (await r.text()).slice(0,200), 'err');
+  } catch(e){ say('cfgMsg', 'Erreur réseau : ' + e.message, 'err'); }
+};
+
+// --- Upload ---
+const drop = $('drop');
+drop.onclick = () => $('file').click();
+$('file').onchange = e => { upload([...e.target.files]); e.target.value = ''; };
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.add('over');
+}));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.remove('over');
+}));
+drop.addEventListener('drop', e => upload([...e.dataTransfer.files]));
+
+function logLine(text){
+  const li = document.createElement('li');
+  li.textContent = text;
+  $('log').prepend(li);
+  return li;
+}
+
+async function upload(files){
+  if(!configured()){
+    $('cfg').classList.remove('hidden');
+    say('cfgMsg', 'Configure Supabase avant d’uploader.', 'err');
+    return;
+  }
+  const zips = files.filter(f => /\.zip$/i.test(f.name));
+  files.filter(f => !/\.zip$/i.test(f.name))
+       .forEach(f => logLine('⚠ ' + f.name + ' ignoré (pas un .zip)'));
+  for(const f of zips){
+    const li = logLine('⏳ ' + f.name + ' …');
+    const name = new Date().toISOString().replace(/[:.]/g, '-').slice(0,19) + '_' + f.name.replace(/[^\w.\-]/g, '_');
+    try {
+      const r = await fetch(base() + '/object/' + encodeURIComponent(cfg.bucket) + '/' + encodeURIComponent(name), {
+        method: 'POST',
+        headers: headers({'Content-Type':'application/zip'}),
+        body: f
+      });
+      if(r.ok) li.textContent = '✅ ' + name + ' (' + fmtSize(f.size) + ')';
+      else li.textContent = '❌ ' + f.name + ' — ' + r.status + ' ' + (await r.text()).slice(0,160);
+    } catch(e){
+      li.textContent = '❌ ' + f.name + ' — ' + e.message;
+    }
+  }
+  list();
+}
+
+// --- Listing ---
+$('refresh').onclick = list;
+
+async function list(){
+  if(!configured()){ say('listMsg', 'Configuration Supabase requise.'); return; }
+  say('listMsg', 'Chargement…');
+  try {
+    const r = await fetch(base() + '/object/list/' + encodeURIComponent(cfg.bucket), {
+      method: 'POST',
+      headers: headers({'Content-Type':'application/json'}),
+      body: JSON.stringify({prefix:'', limit:200, sortBy:{column:'created_at', order:'desc'}})
+    });
+    if(!r.ok){ say('listMsg', 'Erreur ' + r.status + ' : ' + (await r.text()).slice(0,200), 'err'); return; }
+    const items = (await r.json()).filter(o => o.name && o.name !== '.emptyFolderPlaceholder');
+    const tb = $('tbl').querySelector('tbody');
+    tb.innerHTML = '';
+    for(const o of items){
+      const meta = o.metadata || {};
+      const tr = document.createElement('tr');
+      const c1 = document.createElement('td'); c1.textContent = o.name;
+      const c2 = document.createElement('td'); c2.className = 'num'; c2.textContent = fmtSize(meta.size);
+      const c3 = document.createElement('td'); c3.className = 'num'; c3.textContent = fmtDate(o.created_at);
+      tr.append(c1, c2, c3);
+      tb.appendChild(tr);
+    }
+    $('tbl').classList.toggle('hidden', items.length === 0);
+    $('count').textContent = items.length ? items.length + ' fichier(s)' : '';
+    say('listMsg', items.length ? '' : 'Archive vide.');
+  } catch(e){
+    say('listMsg', 'Erreur réseau : ' + e.message, 'err');
+  }
+}
+
+loadCfg();
+list();
+</script>
+</body>
+</html>
