@@ -153,9 +153,13 @@ def upsert_match(sb, match, equipe_dom_id, equipe_vis_id, archive_path):
 
 
 def upsert_joueur(sb, nom, prenom, equipe_id):
-    payload = {'nom': nom, 'prenom': prenom, 'equipe_id': equipe_id}
-    r = sb.table('joueurs').upsert(payload, on_conflict='nom,prenom,equipe_id').execute()
-    return r.data[0]['id']
+    # RPC upsert_joueur : upsert sur (nom_normalise, prenom_normalise,
+    # equipe_id) pour dedupliquer les variantes d'accents/casse
+    # (ex. "FRANÇOIS" vs "FRANCOIS").
+    r = sb.rpc('upsert_joueur', {
+        'p_nom': nom, 'p_prenom': prenom, 'p_equipe_id': equipe_id,
+    }).execute()
+    return r.data
 
 
 def upsert_stats(sb, match_id, joueur_id, equipe_id, j):
