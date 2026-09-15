@@ -118,8 +118,11 @@ def quarantine_zip(sb, storage_path, reason):
 # ─────────────────────────────────────────────
 
 def upsert_equipe(sb, nom):
-    r = sb.table('equipes').upsert({'nom': nom}, on_conflict='nom').execute()
-    return r.data[0]['id']
+    # RPC upsert_equipe : consulte equipes_alias (cas EQUIPE A/B non
+    # devinables), sinon upsert sur nom_normalise (déduplication des
+    # variantes d'espacement du suffixe d'équipe, ex. "- 1" vs "-1").
+    r = sb.rpc('upsert_equipe', {'p_nom': nom}).execute()
+    return r.data
 
 
 def upsert_match(sb, match, equipe_dom_id, equipe_vis_id, archive_path):
